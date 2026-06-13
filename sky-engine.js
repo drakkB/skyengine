@@ -49,6 +49,11 @@ class SkyEngine {
     }, opts);
     this.cam = { yaw: 84, pitch: 10, fov: 70 };   // démarre sur Orion
     this.vel = { yaw: 0, pitch: 0 };
+    // v1.3 — mode horizon (alt/az). 'equatorial' par défaut (compat v1.2).
+    this.mode = 'equatorial';
+    this.geo = { lat: 48.8566, lon: 2.3522 };     // Paris par défaut
+    this.date = new Date();
+    this.zenith = null;
     this.markers = [];
     this.layers = new Map();
     this.onSelect = null;
@@ -157,11 +162,46 @@ class SkyEngine {
     const D = Math.PI / 180;
     const y = this.cam.yaw * D, p = this.cam.pitch * D;
     const cy = Math.cos(y), sy = Math.sin(y), cp = Math.cos(p), sp = Math.sin(p);
-    // forward, right, up
-    this.F = [cp * cy, cp * sy, sp];
-    this.R = [-sy, cy, 0];
-    this.U = [-sp * cy, -sp * sy, cp];
+    // base caméra (repère courant : équatorial OU horizontal selon le mode)
+    let F = [cp * cy, cp * sy, sp];
+    let R = [-sy, cy, 0];
+    let U = [-sp * cy, -sp * sy, cp];
+    // v1.3 — mode horizon : yaw=azimut (depuis le Nord vers l'Est), pitch=hauteur.
+    // On exprime la base (calculée dans le repère horizontal N/E/Up) en coordonnées
+    // équatoriales, pour que la projection des étoiles reste inchangée (coût nul).
+    if (this.mode === 'horizon') {
+      const H = this._horizFrame();           // {N, E, Z} en coords équatoriales
+      const toEq = v => [
+        H.N[0] * v[0] + H.E[0] * v[1] + H.Z[0] * v[2],
+        H.N[1] * v[0] + H.E[1] * v[1] + H.Z[1] * v[2],
+        H.N[2] * v[0] + H.E[2] * v[1] + H.Z[2] * v[2]
+      ];
+      F = toEq(F); R = toEq(R); U = toEq(U);
+      this.zenith = H.Z;                       // pour le culling sous l'horizon
+    } else {
+      this.zenith = null;
+    }
+    this.F = F; this.R = R; this.U = U;
     this.fl = (this.cv.height / 2) / Math.tan(this.cam.fov * D / 2);
+  }
+
+  /* ---------- v1.3 : repère horizontal (alt/az) ---------- */
+  // Temps sidéral local (degrés) pour la date + longitude observateur.
+  _lst() {
+    const d = this.date.getTime() / 86400000 + 2440587.5 - 2451545.0;
+    const gmst = 280.46061837 + 360.98564736629 * d;     // degrés
+    return (((gmst + this.geo.lon) % 360) + 360) % 360;
+  }
+  // Vecteurs Nord / Est / Zénith du repère horizontal, exprimés en coords équatoriales.
+  _horizFrame() {
+    const D = Math.PI / 180;
+    const phi = this.geo.lat * D, th = this._lst() * D;
+    const cphi = Math.cos(phi), sphi = Math.sin(phi), cth = Math.cos(th), sth = Math.sin(th);
+    return {
+      N: [-sphi * cth, -sphi * sth, cphi],   // point Nord de l'horizon (vers le pôle)
+      E: [-sth, cth, 0],                      // Est (étoile qui se lève)
+      Z: [cphi * cth, cphi * sth, sphi]       // zénith (dec=lat, ra=LST)
+    };
   }
 
   _proj(vx, vy, vz) {
@@ -292,6 +332,33 @@ class SkyEngine {
   addLayer(name, fn) { this.layers.set(name, fn); }
   removeLayer(name) { this.layers.delete(name); }
   set(k, v) { this.o[k] = v; }
+
+  /* ---------- v1.3 : API mode horizon (alt/az) ---------- */
+  /**
+   * Bascule en vue "horizon" : le ciel tel qu'on le voit depuis un lieu/heure.
+   * @param {number} lat  latitude observateur (degrés, +N)
+   * @param {number} lon  longitude observateur (degrés, +E)
+   * @param {Date}   [date]  instant d'observation (défaut : maintenant)
+   * Le yaw devient l'azimut (0=Nord, 90=Est) et le pitch la hauteur.
+   */
+  setHorizon(lat, lon, date) {
+    this.geo = { lat: lat, lon: lon };
+    if (date) this.date = date;
+    this.mode = 'horizon';
+    this.cam.pitch = Math.max(0, this.cam.pitch);   // regarde au-dessus du sol
+    return this;
+  }
+  /** Repasse en vue équatoriale classique (RA/Dec). */
+  setEquatorial() { this.mode = 'equatorial'; this.zenith = null; return this; }
+  /** Change l'instant d'observation (utile pour un curseur de temps). */
+  setDate(date) { this.date = date; this._computePlanets(); return this; }
+  /** Oriente la caméra vers un azimut/hauteur (mode horizon). */
+  lookAtAltAz(azDeg, altDeg, fov) {
+    this.cam.yaw = ((azDeg % 360) + 360) % 360;
+    this.cam.pitch = Math.max(-5, Math.min(89, altDeg));
+    if (fov) this.cam.fov = fov;
+    return this;
+  }
 
   /* ---------- vol caméra ---------- */
   _cancelFlight() {
@@ -435,7 +502,10 @@ class SkyEngine {
     // étoiles (sprites par buckets)
     const S = this.data.stars;
     const zoomBoost = Math.sqrt(70 / this.cam.fov);
+    const Zh = this.zenith;   // v1.3 : non-null en mode horizon
     for (let i = 0; i < S.length; i++) {
+      // mode horizon : ne pas dessiner ce qui est sous le sol
+      if (Zh && (this.vec[i*3]*Zh[0] + this.vec[i*3+1]*Zh[1] + this.vec[i*3+2]*Zh[2]) < -0.015) continue;
       const p = this._proj(this.vec[i*3], this.vec[i*3+1], this.vec[i*3+2]);
       if (!p || p[0] < -20 || p[0] > W + 20 || p[1] < -20 || p[1] > H + 20) continue;
       const mag = S[i][2];
@@ -543,8 +613,58 @@ class SkyEngine {
     // planètes v1.1
     if (this.o.planets) this._renderPlanets(ctx, now);
 
+    // horizon v1.3 (ligne, sol, points cardinaux)
+    if (this.mode === 'horizon') this._renderHorizon(ctx);
+
     // layers custom
     for (const fn of this.layers.values()) fn(ctx, this);
+  }
+
+  /* ---------- v1.3 : horizon, sol et points cardinaux ---------- */
+  _renderHorizon(ctx) {
+    const D = Math.PI / 180, H = this._horizFrame();
+    // un point du cercle d'horizon (altitude 0) pour un azimut donné → écran
+    const ringPt = (azDeg) => {
+      const a = azDeg * D, hx = Math.cos(a), hy = Math.sin(a);  // N=+x, E=+y, alt0 → z=0
+      const v = [
+        H.N[0]*hx + H.E[0]*hy, H.N[1]*hx + H.E[1]*hy, H.N[2]*hx + H.E[2]*hy
+      ];
+      return this._proj(v[0], v[1], v[2]);
+    };
+    // polyligne de l'horizon + remplissage du sol côté "bas"
+    const pts = [];
+    for (let az = 0; az <= 360; az += 3) pts.push(ringPt(az));
+    ctx.save();
+    // ligne d'horizon
+    ctx.strokeStyle = 'rgba(120,170,210,0.55)';
+    ctx.lineWidth = this.dpr * 1.4;
+    ctx.beginPath();
+    let started = false;
+    for (const p of pts) {
+      if (!p) { started = false; continue; }
+      if (!started) { ctx.moveTo(p[0], p[1]); started = true; }
+      else ctx.lineTo(p[0], p[1]);
+    }
+    ctx.stroke();
+    // léger halo de sol au bord inférieur (donne la sensation du paysage)
+    const grd = ctx.createLinearGradient(0, this.cv.height * 0.7, 0, this.cv.height);
+    grd.addColorStop(0, 'rgba(8,14,22,0)');
+    grd.addColorStop(1, 'rgba(8,14,22,0.5)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(0, this.cv.height * 0.7, this.cv.width, this.cv.height * 0.3);
+    // points cardinaux
+    const card = [[0,'N'],[45,'NE'],[90,'E'],[135,'SE'],[180,'S'],[225,'SO'],[270,'O'],[315,'NO']];
+    const cardEn = {NE:'NE',SE:'SE',SO:'SW',NO:'NW',N:'N',E:'E',S:'S',O:'W'};
+    ctx.font = `700 ${Math.round(13 * this.dpr)}px 'Space Grotesk', sans-serif`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    for (const [az, lbl] of card) {
+      const p = ringPt(az);
+      if (!p) continue;
+      const txt = this.o.conNameKey === 'e' ? cardEn[lbl] : lbl;
+      ctx.fillStyle = (lbl.length === 1) ? 'rgba(186,212,240,0.95)' : 'rgba(150,175,205,0.7)';
+      ctx.fillText(txt, p[0], p[1] - 12 * this.dpr);
+    }
+    ctx.restore();
   }
 
   /* ---------- planètes v1.1 (algorithme Paul Schlyter, précision ~1°) ---------- */
@@ -634,5 +754,5 @@ class SkyEngine {
     }
   }
 }
-SkyEngine.VERSION = '1.2.1';
+SkyEngine.VERSION = '1.3.0';
 if (typeof module !== 'undefined') module.exports = SkyEngine;

@@ -93,6 +93,18 @@ eng.unproject(px, py)                         // → {ra, dec}  (0.00° roundtri
 SkyEngine.angularDist(ra1, dec1, ra2, dec2)   // static → angular distance in degrees
 ```
 
+### Horizon view (alt/az) — *new in v1.3*
+Switch from the equatorial star-map to **the sky as you actually see it** from a given place and time: real horizon line, N/E/S/W cardinal points, and stars below the ground are hidden. Drag becomes azimuth/altitude.
+
+```js
+eng.setHorizon(lat, lon, date)   // e.g. (48.8566, 2.3522, new Date())
+eng.lookAtAltAz(azDeg, altDeg)   // azimuth from North through East, altitude above horizon
+eng.setDate(date)                // change the moment — drives a time slider
+eng.setEquatorial()              // back to the classic RA/Dec map
+```
+
+It only rotates the 3-vector camera basis into the observer's frame, so the 5,044-star render path is untouched — **zero per-frame cost**. `unproject()` still returns RA/Dec, so click-to-report keeps working in horizon mode.
+
 ## Options at construction
 
 ```js

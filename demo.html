@@ -36,6 +36,7 @@
   <button data-opt="planets">Planets</button>
   <button data-opt="meteors">Meteors</button>
   <button id="orion">Fly to Orion</button>
+  <button id="horizon">🌅 Horizon view</button>
 </div>
 
 <div class="info">Drag to look around · scroll/pinch to zoom · click an object · <b>SkyEngine</b></div>
@@ -64,6 +65,32 @@
 
   // fly to Orion's Belt
   document.getElementById('orion').addEventListener('click', () => eng.flyTo(83.8, -1.2, 26, 1800));
+
+  // horizon mode — "what you'd actually see looking up from here, now"
+  const hbtn = document.getElementById('horizon');
+  let horizon = false;
+  hbtn.addEventListener('click', () => {
+    horizon = !horizon;
+    if (horizon) {
+      // uses the browser's geolocation if granted, else falls back to Paris
+      const go = (lat, lon) => {
+        eng.setHorizon(lat, lon, new Date());
+        eng.lookAtAltAz(180, 30, 90);           // face South, 30° up
+        hbtn.textContent = '🗺️ Sky-map view';
+        hbtn.style.borderColor = '#7c8cff';
+      };
+      if (navigator.geolocation) {
+        navigator.geolocation.getCurrentPosition(
+          pos => go(pos.coords.latitude, pos.coords.longitude),
+          () => go(48.8566, 2.3522),
+          { timeout: 6000 });
+      } else { go(48.8566, 2.3522); }
+    } else {
+      eng.setEquatorial();
+      hbtn.textContent = '🌅 Horizon view';
+      hbtn.style.borderColor = 'rgba(140,160,255,.3)';
+    }
+  });
 
   // selection readout
   const sel = document.getElementById('sel');
