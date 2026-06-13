@@ -1,0 +1,37 @@
+{
+  "name": "skyengine",
+  "version": "1.2.1",
+  "description": "A dependency-free 3D planetarium engine in native canvas 2D — 5044 real stars, constellations, planets, fly-to, custom markers and layers. Zero dependencies.",
+  "main": "sky-engine.js",
+  "files": [
+    "sky-engine.js",
+    "sky-data.js",
+    "demo.html",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "demo": "npx --yes serve ."
+  },
+  "keywords": [
+    "planetarium",
+    "astronomy",
+    "star-map",
+    "starmap",
+    "night-sky",
+    "constellations",
+    "canvas",
+    "2d",
+    "no-dependencies",
+    "celestial",
+    "stars",
+    "sky"
+  ],
+  "homepage": "https://vigi-sky.fr/planetarium-3d.html",
+  "author": "drakkB",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/drakkB/skyengine.git"
+  }
+}
