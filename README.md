@@ -105,6 +105,18 @@ eng.setEquatorial()              // back to the classic RA/Dec map
 
 It only rotates the 3-vector camera basis into the observer's frame, so the 5,044-star render path is untouched — **zero per-frame cost**. `unproject()` still returns RA/Dec, so click-to-report keeps working in horizon mode.
 
+### AR mode — point your phone at the sky *(new in v1.3)*
+On a phone, drive the camera with the device's orientation: lift the phone toward the sky and the real stars are labelled over it. Runs in the browser, no app.
+
+```js
+eng.enableAR(state => {
+  // state: 'on' | 'denied' | 'unsupported'   (handles the iOS 13+ permission prompt)
+});
+eng.disableAR();
+```
+
+Call `enableAR()` from a user gesture (a tap) so iOS grants motion access. It implies `setHorizon()` if you aren't already in horizon mode.
+
 ## Options at construction
 
 ```js

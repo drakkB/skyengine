@@ -1,6 +1,6 @@
 {
   "name": "skyengine",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "A dependency-free 3D planetarium engine in native canvas 2D — 5044 real stars, constellations, planets, fly-to, custom markers and layers. Zero dependencies.",
   "main": "sky-engine.js",
   "files": [

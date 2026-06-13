@@ -360,6 +360,51 @@ class SkyEngine {
     return this;
   }
 
+  /**
+   * v1.3 — Mode AR : l'orientation de l'appareil pilote la caméra.
+   * Lève le téléphone vers le ciel → les étoiles s'affichent par-dessus.
+   * Nécessite le mode horizon (setHorizon). Gère la permission iOS 13+.
+   * @param {function} [onState] rappel avec 'on' | 'denied' | 'unsupported'
+   */
+  enableAR(onState) {
+    const notify = s => { if (onState) onState(s); };
+    if (typeof window === 'undefined' || !('DeviceOrientationEvent' in window)) { notify('unsupported'); return this; }
+    if (this.mode !== 'horizon') this.setHorizon(this.geo.lat, this.geo.lon, new Date());
+    const handler = (e) => {
+      // cap (azimut) : compas iOS si dispo, sinon alpha inversé
+      let heading = (e.webkitCompassHeading != null) ? e.webkitCompassHeading
+                  : (e.alpha != null ? (360 - e.alpha) : null);
+      if (heading == null || e.beta == null) return;
+      // hauteur : téléphone vertical (beta≈90)→horizon ; à plat écran vers le haut (beta≈0)→zénith
+      const alt = Math.max(-8, Math.min(90, 90 - Math.abs(e.beta)));
+      this.cam.fov = 65;
+      this.lookAtAltAz(heading, alt);
+    };
+    const attach = () => {
+      addEventListener('deviceorientationabsolute', handler, true);
+      addEventListener('deviceorientation', handler, true);
+      this._arHandler = handler; this.arActive = true; this.vel.yaw = this.vel.pitch = 0;
+      notify('on');
+    };
+    // iOS 13+ : permission explicite requise (dans un geste utilisateur)
+    if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission()
+        .then(st => st === 'granted' ? attach() : notify('denied'))
+        .catch(() => notify('denied'));
+    } else { attach(); }
+    return this;
+  }
+  /** Quitte le mode AR (réactive le drag manuel). */
+  disableAR() {
+    if (this._arHandler) {
+      removeEventListener('deviceorientationabsolute', this._arHandler, true);
+      removeEventListener('deviceorientation', this._arHandler, true);
+      this._arHandler = null;
+    }
+    this.arActive = false;
+    return this;
+  }
+
   /* ---------- vol caméra ---------- */
   _cancelFlight() {
     if (this._flight) { const d = this._flight.done; this._flight = null; if (d) d(); }
@@ -434,8 +479,8 @@ class SkyEngine {
       this.cam.pitch = F.p0 + F.dp * e;
       this.cam.fov = F.f0 + F.df * e;
       if (t >= 1) { const d = F.done; this._flight = null; d(); }
-    } else {
-      // inertie
+    } else if (!this.arActive) {
+      // inertie (désactivée en mode AR : l'orientation de l'appareil pilote la caméra)
       this.cam.yaw = ((this.cam.yaw + this.vel.yaw) % 360 + 360) % 360;
       this.cam.pitch = Math.max(-89, Math.min(89, this.cam.pitch + this.vel.pitch));
       this.vel.yaw *= 0.94; this.vel.pitch *= 0.94;
@@ -754,5 +799,5 @@ class SkyEngine {
     }
   }
 }
-SkyEngine.VERSION = '1.3.0';
+SkyEngine.VERSION = '1.3.1';
 if (typeof module !== 'undefined') module.exports = SkyEngine;
