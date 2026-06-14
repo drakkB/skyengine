@@ -323,6 +323,11 @@ class SkyEngine {
       const pr = this.project(m.ra, m.dec);
       if (pr.visible && Math.hypot(pr.x - px, pr.y - py) < 26) best = { type: 'marker', ...m };
     }
+    // v1.3.2 : planètes cliquables
+    if (this.o.planets && this.planetPos) for (const pl of this.planetPos) {
+      const pr = this.project(pl.ra, pl.dec);
+      if (pr.visible && Math.hypot(pr.x - px, pr.y - py) < 28) best = { type: 'planet', name: pl.n, ra: pl.ra, dec: pl.dec, sym: pl.sym };
+    }
     return best;
   }
 
@@ -799,5 +804,5 @@ class SkyEngine {
     }
   }
 }
-SkyEngine.VERSION = '1.3.1';
+SkyEngine.VERSION = '1.3.2';
 if (typeof module !== 'undefined') module.exports = SkyEngine;
